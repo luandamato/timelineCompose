@@ -18,6 +18,9 @@ import com.airtable.interview.airtableschedule.models.Event
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.colorResource
+import com.airtable.interview.airtableschedule.R
 
 /* =========================================================
  * VIEW MODE
@@ -26,10 +29,6 @@ import java.util.*
 enum class CalendarViewMode {
     WEEK, MONTH, YEAR
 }
-
-/* =========================================================
- * SCREEN
- * ========================================================= */
 
 @Composable
 fun TimelineScreen(
@@ -105,10 +104,6 @@ fun TimelineScreen(
     }
 }
 
-/* =========================================================
- * HEADER
- * ========================================================= */
-
 @Composable
 fun CalendarHeader(
     selectedMode: CalendarViewMode,
@@ -120,19 +115,20 @@ fun CalendarHeader(
             .padding(12.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        CalendarViewMode.values().forEach { mode ->
+        CalendarViewMode.entries.forEach { mode ->
+            val labelResId = when (mode) {
+                CalendarViewMode.WEEK -> R.string.week
+                CalendarViewMode.MONTH -> R.string.month
+                CalendarViewMode.YEAR -> R.string.year
+            }
             FilterChip(
                 selected = selectedMode == mode,
                 onClick = { onModeChange(mode) },
-                label = { Text(mode.name) }
+                label = { Text(stringResource(labelResId)) }
             )
         }
     }
 }
-
-/* =========================================================
- * PERIOD NAVIGATION
- * ========================================================= */
 
 @Composable
 fun PeriodNavigationHeader(
@@ -163,10 +159,6 @@ fun PeriodNavigationHeader(
     }
 }
 
-/* =========================================================
- * GRID
- * ========================================================= */
-
 @Composable
 fun TimelineGrid(
     dates: List<Date>,
@@ -195,10 +187,6 @@ fun TimelineGrid(
         }
     }
 }
-
-/* =========================================================
- * DAY COLUMN (VERTICAL SCROLL FIXED HERE)
- * ========================================================= */
 
 @Composable
 fun DayColumn(
@@ -249,10 +237,6 @@ fun DayColumn(
     }
 }
 
-/* =========================================================
- * EVENT BLOCK
- * ========================================================= */
-
 @Composable
 fun EventBlock(
     event: Event,
@@ -263,7 +247,8 @@ fun EventBlock(
             .fillMaxWidth()
             .heightIn(min = 56.dp)
             .clickable { onClick() },
-        shape = RoundedCornerShape(8.dp)
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = colorResource(id = R.color.design_default_color_primary))
     ) {
         Text(
             text = event.name,
@@ -273,10 +258,6 @@ fun EventBlock(
     }
 }
 
-/* =========================================================
- * DIALOG
- * ========================================================= */
-
 @Composable
 fun EventDetailsDialog(
     event: Event,
@@ -285,13 +266,13 @@ fun EventDetailsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Fechar") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
         },
         title = { Text(event.name) },
         text = {
             Column {
-                Text("Início: ${event.startDate}")
-                Text("Fim: ${event.endDate}")
+                Text("${stringResource(R.string.start)}: ${event.startDate}")
+                Text("${stringResource(R.string.end)}: ${event.endDate}")
             }
         }
     )
