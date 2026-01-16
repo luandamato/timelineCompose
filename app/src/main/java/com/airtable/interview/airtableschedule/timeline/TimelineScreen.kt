@@ -2,6 +2,7 @@ package com.airtable.interview.airtableschedule.timeline
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -37,7 +38,7 @@ fun TimelineScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     var viewMode by remember { mutableStateOf(CalendarViewMode.WEEK) }
-    val baseDate = remember { todayAtMidnight() } // 🔒 FIXO
+    val baseDate = remember { todayAtMidnight() }
     var selectedEvent by remember { mutableStateOf<Event?>(null) }
 
     val pagerState = rememberPagerState(
@@ -196,7 +197,7 @@ fun TimelineGrid(
 }
 
 /* =========================================================
- * DAY COLUMN
+ * DAY COLUMN (VERTICAL SCROLL FIXED HERE)
  * ========================================================= */
 
 @Composable
@@ -225,19 +226,24 @@ fun DayColumn(
 
         Spacer(Modifier.height(8.dp))
 
-        repeat(tracks) { trackIndex ->
-            val event = eventsWithTracks.firstOrNull {
-                it.track == trackIndex &&
-                        it.start < dayEnd &&
-                        it.end >= dayStart
-            }
-
-            if (event != null) {
-                EventBlock(event.event) {
-                    onEventClick(event.event)
+        LazyColumn(
+            modifier = Modifier.fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items(tracks) { trackIndex ->
+                val event = eventsWithTracks.firstOrNull {
+                    it.track == trackIndex &&
+                            it.start < dayEnd &&
+                            it.end >= dayStart
                 }
-            } else {
-                Spacer(Modifier.height(56.dp))
+
+                if (event != null) {
+                    EventBlock(event.event) {
+                        onEventClick(event.event)
+                    }
+                } else {
+                    Spacer(Modifier.height(56.dp))
+                }
             }
         }
     }
@@ -256,7 +262,6 @@ fun EventBlock(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .padding(vertical = 4.dp)
             .clickable { onClick() },
         shape = RoundedCornerShape(8.dp)
     ) {
