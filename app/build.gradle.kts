@@ -68,6 +68,10 @@ dependencies {
     // Material
     implementation(libs.androidx.compose.material3)
 
+    // Accompanist Pager para scroll horizontal
+    implementation(libs.accompanist.pager)
+    implementation(libs.accompanist.pager.indicators)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
