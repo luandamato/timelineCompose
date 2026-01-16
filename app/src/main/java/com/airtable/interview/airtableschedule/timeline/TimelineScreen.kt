@@ -1,26 +1,23 @@
 package com.airtable.interview.airtableschedule.timeline
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.airtable.interview.airtableschedule.models.Event
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.colorResource
-import com.airtable.interview.airtableschedule.R
+import com.airtable.interview.airtableschedule.models.normalize
+import com.airtable.interview.airtableschedule.models.todayAtMidnight
+import com.airtable.interview.airtableschedule.timeline.ui.CalendarHeader
+import com.airtable.interview.airtableschedule.timeline.ui.EventDetailsDialog
+import com.airtable.interview.airtableschedule.timeline.ui.PeriodNavigationHeader
+import com.airtable.interview.airtableschedule.timeline.ui.TimelineGrid
 
 /* =========================================================
  * VIEW MODE
@@ -104,183 +101,6 @@ fun TimelineScreen(
     }
 }
 
-@Composable
-fun CalendarHeader(
-    selectedMode: CalendarViewMode,
-    onModeChange: (CalendarViewMode) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        CalendarViewMode.entries.forEach { mode ->
-            val labelResId = when (mode) {
-                CalendarViewMode.WEEK -> R.string.week
-                CalendarViewMode.MONTH -> R.string.month
-                CalendarViewMode.YEAR -> R.string.year
-            }
-            FilterChip(
-                selected = selectedMode == mode,
-                onClick = { onModeChange(mode) },
-                label = { Text(stringResource(labelResId)) }
-            )
-        }
-    }
-}
-
-@Composable
-fun PeriodNavigationHeader(
-    title: String,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
-    ) {
-        IconButton(onClick = onPrevious) {
-            Text("◀", style = MaterialTheme.typography.headlineMedium)
-        }
-
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-
-        IconButton(onClick = onNext) {
-            Text("▶", style = MaterialTheme.typography.headlineMedium)
-        }
-    }
-}
-
-@Composable
-fun TimelineGrid(
-    dates: List<Date>,
-    eventsWithTracks: List<EventTrack>,
-    viewMode: CalendarViewMode,
-    onEventClick: (Event) -> Unit
-) {
-    val maxTracks = remember(eventsWithTracks) {
-        eventsWithTracks.maxOfOrNull { it.track } ?: 0
-    }
-
-    LazyRow(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 8.dp)
-    ) {
-        dates.forEach { date ->
-            item {
-                DayColumn(
-                    date = date,
-                    eventsWithTracks = eventsWithTracks,
-                    tracks = maxTracks + 1,
-                    viewMode = viewMode,
-                    onEventClick = onEventClick
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun DayColumn(
-    date: Date,
-    eventsWithTracks: List<EventTrack>,
-    tracks: Int,
-    viewMode: CalendarViewMode,
-    onEventClick: (Event) -> Unit
-) {
-    val dayStart = date
-    val dayEnd = Calendar.getInstance().apply {
-        time = date
-        add(Calendar.DAY_OF_MONTH, 1)
-    }.time
-
-    Column(
-        modifier = Modifier
-            .width(180.dp)
-            .padding(4.dp)
-    ) {
-        Text(
-            text = buildColumnHeader(date, viewMode),
-            style = MaterialTheme.typography.titleSmall
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        LazyColumn(
-            modifier = Modifier.fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            items(tracks) { trackIndex ->
-                val event = eventsWithTracks.firstOrNull {
-                    it.track == trackIndex &&
-                            it.start < dayEnd &&
-                            it.end >= dayStart
-                }
-
-                if (event != null) {
-                    EventBlock(event.event) {
-                        onEventClick(event.event)
-                    }
-                } else {
-                    Spacer(Modifier.height(56.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun EventBlock(
-    event: Event,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = colorResource(id = R.color.design_default_color_primary))
-    ) {
-        Text(
-            text = event.name,
-            modifier = Modifier.padding(8.dp),
-            style = MaterialTheme.typography.bodySmall
-        )
-    }
-}
-
-@Composable
-fun EventDetailsDialog(
-    event: Event,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
-        },
-        title = { Text(event.name) },
-        text = {
-            Column {
-                Text("${stringResource(R.string.start)}: ${event.startDate}")
-                Text("${stringResource(R.string.end)}: ${event.endDate}")
-            }
-        }
-    )
-}
-
-/* =========================================================
- * TEXT BUILDERS
- * ========================================================= */
 
 fun buildPeriodHeader(
     baseDate: Date,
@@ -305,20 +125,6 @@ fun buildPeriodHeader(
             SimpleDateFormat("MMMM yyyy", locale).format(cal.time)
     }
 }
-
-fun buildColumnHeader(date: Date, viewMode: CalendarViewMode): String {
-    val locale = Locale.getDefault()
-    return when (viewMode) {
-        CalendarViewMode.YEAR ->
-            SimpleDateFormat("MMMM", locale).format(date)
-        else ->
-            SimpleDateFormat("EEE, d", locale).format(date)
-    }
-}
-
-/* =========================================================
- * DATE CALCULATION
- * ========================================================= */
 
 fun getDatesForPage(
     page: Int,
@@ -397,17 +203,3 @@ fun assignTracks(events: List<Event>): List<EventTrack> {
     }
 }
 
-/* =========================================================
- * UTILS
- * ========================================================= */
-
-fun normalize(date: Date): Date =
-    Calendar.getInstance().apply {
-        time = date
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.time
-
-fun todayAtMidnight(): Date = normalize(Date())

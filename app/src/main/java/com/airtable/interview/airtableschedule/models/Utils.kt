@@ -1,25 +1,19 @@
 package com.airtable.interview.airtableschedule.models
 
+import java.util.Calendar
+import java.util.Date
+
 /**
  * Takes a list of [Event]s and assigns them to lanes based on start/end dates.
  */
-fun assignLanes(events: List<Event>): List<List<Event>> {
-    val lanes = mutableListOf<MutableList<Event>>()
 
-    // Go through the list of events sorted by start date
-    events.sortedBy { event -> event.startDate }
-        .forEach { event ->
-            // Attempt to assign the event to an existing lane
-            val availableLane = lanes.find { lane ->
-                lane.last().endDate < event.startDate
-            }
+fun normalize(date: Date): Date =
+    Calendar.getInstance().apply {
+        time = date
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.time
 
-            if (availableLane != null) {
-                availableLane.add(event)
-            } else {
-                // Create a new lane if there are currently no free lanes to assign the event
-                lanes.add(mutableListOf(event))
-            }
-        }
-    return lanes
-}
+fun todayAtMidnight(): Date = normalize(Date())
