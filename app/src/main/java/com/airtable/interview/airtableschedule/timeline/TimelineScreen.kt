@@ -3,42 +3,49 @@ package com.airtable.interview.airtableschedule.timeline
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.airtable.interview.airtableschedule.models.Event
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-/* ---------------- VIEW MODE ---------------- */
+/* =========================================================
+ * VIEW MODE
+ * ========================================================= */
 
 enum class CalendarViewMode {
     WEEK, MONTH, YEAR
 }
 
-/* ---------------- SCREEN ---------------- */
+/* =========================================================
+ * SCREEN
+ * ========================================================= */
 
 @Composable
 fun TimelineScreen(
     viewModel: TimelineViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var viewMode by remember { mutableStateOf(CalendarViewMode.WEEK) }
-    var selectedEvent by remember { mutableStateOf<Event?>(null) }
 
-    val baseDate = remember { Date() }
+    var viewMode by remember { mutableStateOf(CalendarViewMode.WEEK) }
+    val baseDate = remember { todayAtMidnight() } // 🔒 FIXO
+    var selectedEvent by remember { mutableStateOf<Event?>(null) }
 
     val pagerState = rememberPagerState(
         initialPage = 500,
         pageCount = { 1000 }
     )
+
+    val scope = rememberCoroutineScope()
 
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -47,28 +54,46 @@ fun TimelineScreen(
             onModeChange = { viewMode = it }
         )
 
-        Text(
-            text = buildPeriodHeader(
+        PeriodNavigationHeader(
+            title = buildPeriodHeader(
+                baseDate = baseDate,
                 page = pagerState.currentPage,
-                viewMode = viewMode,
-                baseDate = baseDate
+                viewMode = viewMode
             ),
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(12.dp)
+            onPrevious = {
+                scope.launch {
+                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                }
+            },
+            onNext = {
+                scope.launch {
+                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                }
+            }
         )
 
         HorizontalDivider()
 
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = false,
             modifier = Modifier.fillMaxSize()
         ) { page ->
 
-            val dates = getDatesForPage(page, viewMode, baseDate)
+            val dates = getDatesForPage(
+                page = page,
+                baseDate = baseDate,
+                viewMode = viewMode
+            )
+
+            val eventsWithTracks = remember(uiState.events) {
+                assignTracks(uiState.events)
+            }
 
             TimelineGrid(
                 dates = dates,
-                events = uiState.events,
+                eventsWithTracks = eventsWithTracks,
+                viewMode = viewMode,
                 onEventClick = { selectedEvent = it }
             )
         }
@@ -79,7 +104,9 @@ fun TimelineScreen(
     }
 }
 
-/* ---------------- HEADER ---------------- */
+/* =========================================================
+ * HEADER
+ * ========================================================= */
 
 @Composable
 fun CalendarHeader(
@@ -102,66 +129,82 @@ fun CalendarHeader(
     }
 }
 
-/* ---------------- PERIOD TITLE ---------------- */
+/* =========================================================
+ * PERIOD NAVIGATION
+ * ========================================================= */
 
-fun buildPeriodHeader(
-    page: Int,
-    viewMode: CalendarViewMode,
-    baseDate: Date
-): String {
-    val cal = Calendar.getInstance()
-    cal.time = baseDate
-
-    when (viewMode) {
-        CalendarViewMode.WEEK -> {
-            cal.add(Calendar.WEEK_OF_YEAR, page - 500)
-            return SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(cal.time)
+@Composable
+fun PeriodNavigationHeader(
+    title: String,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        IconButton(onClick = onPrevious) {
+            Text("◀", style = MaterialTheme.typography.headlineMedium)
         }
 
-        CalendarViewMode.MONTH -> {
-            cal.add(Calendar.MONTH, page - 500)
-            return SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(cal.time)
-        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
 
-        CalendarViewMode.YEAR -> {
-            cal.add(Calendar.YEAR, page - 500)
-            return cal.get(Calendar.YEAR).toString()
+        IconButton(onClick = onNext) {
+            Text("▶", style = MaterialTheme.typography.headlineMedium)
         }
     }
 }
 
-/* ---------------- GRID ---------------- */
+/* =========================================================
+ * GRID
+ * ========================================================= */
 
 @Composable
 fun TimelineGrid(
     dates: List<Date>,
-    events: List<Event>,
+    eventsWithTracks: List<EventTrack>,
+    viewMode: CalendarViewMode,
     onEventClick: (Event) -> Unit
 ) {
-    val normalizedEvents = remember(events) {
-        events.sortedBy { fixLegacyDate(it.startDate) }
+    val maxTracks = remember(eventsWithTracks) {
+        eventsWithTracks.maxOfOrNull { it.track } ?: 0
     }
 
     LazyRow(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 8.dp)
     ) {
-        items(dates) { date ->
-            DayColumn(
-                date = fixLegacyDate(date),
-                events = normalizedEvents,
-                onEventClick = onEventClick
-            )
+        dates.forEach { date ->
+            item {
+                DayColumn(
+                    date = date,
+                    eventsWithTracks = eventsWithTracks,
+                    tracks = maxTracks + 1,
+                    viewMode = viewMode,
+                    onEventClick = onEventClick
+                )
+            }
         }
     }
 }
 
-/* ---------------- DAY COLUMN ---------------- */
+/* =========================================================
+ * DAY COLUMN
+ * ========================================================= */
 
 @Composable
 fun DayColumn(
     date: Date,
-    events: List<Event>,
+    eventsWithTracks: List<EventTrack>,
+    tracks: Int,
+    viewMode: CalendarViewMode,
     onEventClick: (Event) -> Unit
 ) {
     val dayStart = date
@@ -172,24 +215,27 @@ fun DayColumn(
 
     Column(
         modifier = Modifier
-            .width(160.dp)
+            .width(180.dp)
             .padding(4.dp)
     ) {
         Text(
-            text = SimpleDateFormat("d", Locale.getDefault()).format(date),
+            text = buildColumnHeader(date, viewMode),
             style = MaterialTheme.typography.titleSmall
         )
 
         Spacer(Modifier.height(8.dp))
 
-        events.forEach { event ->
-            val start = fixLegacyDate(event.startDate)
-            val end = fixLegacyDate(event.endDate)
+        repeat(tracks) { trackIndex ->
+            val event = eventsWithTracks.firstOrNull {
+                it.track == trackIndex &&
+                        it.start < dayEnd &&
+                        it.end >= dayStart
+            }
 
-            val intersects = start < dayEnd && end >= dayStart
-
-            if (intersects) {
-                EventBlock(event) { onEventClick(event) }
+            if (event != null) {
+                EventBlock(event.event) {
+                    onEventClick(event.event)
+                }
             } else {
                 Spacer(Modifier.height(56.dp))
             }
@@ -197,7 +243,9 @@ fun DayColumn(
     }
 }
 
-/* ---------------- EVENT ---------------- */
+/* =========================================================
+ * EVENT BLOCK
+ * ========================================================= */
 
 @Composable
 fun EventBlock(
@@ -207,6 +255,7 @@ fun EventBlock(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 56.dp)
             .padding(vertical = 4.dp)
             .clickable { onClick() },
         shape = RoundedCornerShape(8.dp)
@@ -219,51 +268,9 @@ fun EventBlock(
     }
 }
 
-/* ---------------- DATES ---------------- */
-
-fun getDatesForPage(
-    page: Int,
-    viewMode: CalendarViewMode,
-    baseDate: Date
-): List<Date> {
-    val cal = Calendar.getInstance()
-    cal.time = baseDate
-
-    when (viewMode) {
-        CalendarViewMode.WEEK -> {
-            cal.add(Calendar.WEEK_OF_YEAR, page - 500)
-            cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
-            return List(7) {
-                val date = cal.time
-                cal.add(Calendar.DAY_OF_MONTH, 1)
-                date
-            }
-        }
-
-        CalendarViewMode.MONTH -> {
-            cal.add(Calendar.MONTH, page - 500)
-            cal.set(Calendar.DAY_OF_MONTH, 1)
-            val days = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
-            return List(days) {
-                val date = cal.time
-                cal.add(Calendar.DAY_OF_MONTH, 1)
-                date
-            }
-        }
-
-        CalendarViewMode.YEAR -> {
-            cal.add(Calendar.YEAR, page - 500)
-            cal.set(Calendar.MONTH, 0)
-            return List(12) {
-                val date = cal.time
-                cal.add(Calendar.MONTH, 1)
-                date
-            }
-        }
-    }
-}
-
-/* ---------------- EVENT DIALOG ---------------- */
+/* =========================================================
+ * DIALOG
+ * ========================================================= */
 
 @Composable
 fun EventDetailsDialog(
@@ -273,29 +280,148 @@ fun EventDetailsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close")
-            }
+            TextButton(onClick = onDismiss) { Text("Fechar") }
         },
         title = { Text(event.name) },
         text = {
-            Text(
-                "Start: ${event.startDate}\nEnd: ${event.endDate}"
-            )
+            Column {
+                Text("Início: ${event.startDate}")
+                Text("Fim: ${event.endDate}")
+            }
         }
     )
 }
 
-/* ---------------- DATE FIX ---------------- */
-/* Corrige Date(year, month, day) legado */
+/* =========================================================
+ * TEXT BUILDERS
+ * ========================================================= */
 
-fun fixLegacyDate(date: Date): Date {
+fun buildPeriodHeader(
+    baseDate: Date,
+    page: Int,
+    viewMode: CalendarViewMode
+): String {
     val cal = Calendar.getInstance()
-    cal.time = date
-    cal.set(Calendar.MONTH, cal.get(Calendar.MONTH) - 1)
-    cal.set(Calendar.HOUR_OF_DAY, 0)
-    cal.set(Calendar.MINUTE, 0)
-    cal.set(Calendar.SECOND, 0)
-    cal.set(Calendar.MILLISECOND, 0)
-    return cal.time
+    cal.time = baseDate
+
+    when (viewMode) {
+        CalendarViewMode.WEEK -> cal.add(Calendar.WEEK_OF_YEAR, page - 500)
+        CalendarViewMode.MONTH -> cal.add(Calendar.MONTH, page - 500)
+        CalendarViewMode.YEAR -> cal.add(Calendar.YEAR, page - 500)
+    }
+
+    val locale = Locale.getDefault()
+
+    return when (viewMode) {
+        CalendarViewMode.YEAR ->
+            SimpleDateFormat("yyyy", locale).format(cal.time)
+        else ->
+            SimpleDateFormat("MMMM yyyy", locale).format(cal.time)
+    }
 }
+
+fun buildColumnHeader(date: Date, viewMode: CalendarViewMode): String {
+    val locale = Locale.getDefault()
+    return when (viewMode) {
+        CalendarViewMode.YEAR ->
+            SimpleDateFormat("MMMM", locale).format(date)
+        else ->
+            SimpleDateFormat("EEE, d", locale).format(date)
+    }
+}
+
+/* =========================================================
+ * DATE CALCULATION
+ * ========================================================= */
+
+fun getDatesForPage(
+    page: Int,
+    baseDate: Date,
+    viewMode: CalendarViewMode
+): List<Date> {
+    val cal = Calendar.getInstance()
+    cal.time = baseDate
+
+    when (viewMode) {
+        CalendarViewMode.WEEK -> {
+            cal.add(Calendar.WEEK_OF_YEAR, page - 500)
+            cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+            return List(7) {
+                val d = cal.time
+                cal.add(Calendar.DAY_OF_MONTH, 1)
+                d
+            }
+        }
+
+        CalendarViewMode.MONTH -> {
+            cal.add(Calendar.MONTH, page - 500)
+            cal.set(Calendar.DAY_OF_MONTH, 1)
+            val days = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+            return List(days) {
+                val d = cal.time
+                cal.add(Calendar.DAY_OF_MONTH, 1)
+                d
+            }
+        }
+
+        CalendarViewMode.YEAR -> {
+            cal.add(Calendar.YEAR, page - 500)
+            cal.set(Calendar.MONTH, 0)
+            return List(12) {
+                val d = cal.time
+                cal.add(Calendar.MONTH, 1)
+                d
+            }
+        }
+    }
+}
+
+/* =========================================================
+ * TRACK ENGINE
+ * ========================================================= */
+
+data class EventTrack(
+    val event: Event,
+    val start: Date,
+    val end: Date,
+    val track: Int
+)
+
+fun assignTracks(events: List<Event>): List<EventTrack> {
+    val sorted = events.sortedBy { it.startDate }
+    val trackEndDates = mutableListOf<Date>()
+
+    return sorted.map { event ->
+        val index = trackEndDates.indexOfFirst { it.before(event.startDate) }
+
+        val track = if (index >= 0) {
+            trackEndDates[index] = event.endDate
+            index
+        } else {
+            trackEndDates.add(event.endDate)
+            trackEndDates.lastIndex
+        }
+
+        EventTrack(
+            event = event,
+            start = normalize(event.startDate),
+            end = normalize(event.endDate),
+            track = track
+        )
+    }
+}
+
+/* =========================================================
+ * UTILS
+ * ========================================================= */
+
+fun normalize(date: Date): Date =
+    Calendar.getInstance().apply {
+        time = date
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.time
+
+fun todayAtMidnight(): Date = normalize(Date())
